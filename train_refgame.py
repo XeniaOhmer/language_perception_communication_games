@@ -150,7 +150,7 @@ for r in range(args.n_runs):
             sender.load_weights(sender_path + 'sender_weights_epoch' + str(sender_epoch) + '/')
 
     if args.classification and args.train_vision_receiver:
-        classification_module_receiver = tf.keras.Sequential([cnn_sender.get_layer('dense_2')])
+        classification_module_receiver = tf.keras.Sequential([cnn_receiver.get_layer('dense_2')])
         receiver = ClassificationReceiver(
             effective_vocab_size,
             args.message_length,
