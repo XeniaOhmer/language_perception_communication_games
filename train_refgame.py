@@ -135,12 +135,13 @@ for r in range(args.n_runs):
             activation=args.activation,
             train_vision=args.train_vision_sender)
     else:
+        vision_module = vision_module_sender if args.train_vision_sender else None
         sender = Sender(
             effective_vocab_size,
             args.message_length,
             args.embed_dim,
             args.hidden_dim,
-            None,
+            vision_module,
             flexible_message_length=args.flexible_message_length,
             activation=args.activation,
             train_vision=args.train_vision_sender)
@@ -164,12 +165,13 @@ for r in range(args.n_runs):
             n_distractors=args.n_distractors,
             train_vision=args.train_vision_receiver)
     else:
+        vision_module = vision_module_receiver if args.train_vision_receiver else None
         receiver = Receiver(
             effective_vocab_size,
             args.message_length,
             args.embed_dim,
             args.hidden_dim,
-            None,
+            vision_module,
             flexible_message_length=args.flexible_message_length,
             activation=args.activation,
             n_distractors=args.n_distractors,
