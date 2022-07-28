@@ -144,7 +144,7 @@ Again, training of the vision modules and training on the classification task ne
 
 ## Analyses and results 
 
-All results can be found in the 'results.zip' folder of the associated OSF project. In case you would like to run the analyses, download and unzip them, then move them into the main directory of the repository. (We separated them because they add up to ~3GB.)
+All results can be found in the 'results.zip' folder of the associated OSF project. In case you would like to run the analyses, download and unzip them, then move them into the main directory of the repository. (We separated them because they add up to ~4GB.)
 
 The main results are in these subfolders: 
 * language_emergence_basic: influence of perception on language / evolutionary analysis
