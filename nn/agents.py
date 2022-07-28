@@ -37,8 +37,6 @@ class BaseAgent(Model):
 
 
 class Sender(BaseAgent):
-    # In our experiments, the Sender is used to train the network excluding the vision module on
-    # the feedback from the communication game. """
 
     def __init__(self, vocab_size, max_message_length, embed_dim, hidden_dim, vision_module,
                  flexible_message_length=False, activation='tanh', train_vision=False):
@@ -141,8 +139,6 @@ class ClassificationSender(Sender):
     """ The ClassificationSender inherits from Sender and has additional
         methods and layers for performing an object classification task with its vision module.
     """
-    # In our experiments, this agent class is used to train the network including the vision module
-    # based on feedback from the communication game and the pretraining classification task.
     
     def __init__(self, vocab_size, max_message_length, embed_dim, hidden_dim, vision_module, 
                  classification_module, flexible_message_length=False, activation='tanh', train_vision=True):
@@ -160,7 +156,7 @@ class ClassificationSender(Sender):
         self.__build_classification_module()
 
     def __build_classification_module(self):
-        """ Initialize classification module weights. """
+        """ Initialize classification module weights."""
         input_shape = self.vision_module.input.get_shape().as_list()
         input_shape = [2] + input_shape[1:]
         test_input = tf.zeros(input_shape)
@@ -174,8 +170,6 @@ class ClassificationSender(Sender):
     
 
 class Receiver(BaseAgent):
-    # In our experiments, the Receiver is used to train the network excluding the vision module
-    # on the feedback from the communication game.
 
     def __init__(
             self, vocab_size, max_message_length, embed_dim, hidden_dim, vision_module, flexible_message_length=False,
@@ -202,7 +196,7 @@ class Receiver(BaseAgent):
     def __build(self, feature_dim=16):
         """ Initialize the network weights
 
-        :param feature_dim:
+        :param feature_dim: dimension of visual representations
         """
         if self.vision_module is None:
             input_shape = [2, self.n_distractors+1, feature_dim]
@@ -248,9 +242,6 @@ class Receiver(BaseAgent):
 class ClassificationReceiver(Receiver):
     """ The ClassificationReceiver inherits from Receiver and has additional
         methods and layers for performing an object classification task with its vision module."""
-
-    # In our experiments, this agent class is used to train the network including the vision module
-    #         based on feedback from the communication game and the pretraining classification task.
 
     def __init__(self, vocab_size, max_message_length, embed_dim, hidden_dim, vision_module, classification_module,
                  flexible_message_length=False, activation='tanh', n_distractors=2, image_dim=64, train_vision=True):

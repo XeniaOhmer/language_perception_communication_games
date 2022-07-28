@@ -23,7 +23,7 @@ def get_stats(name, vocab_size, message_length, mode, n_runs=10):
         rewards.append(np.load(filename + '/reward.npy'))
         test_rewards.append(np.load(filename + '/test_reward.npy'))
 
-        if 'train_vision' in mode:
+        if 'train_vision' in mode and not 'no_classification' in mode and not 'unbiased' in mode:
             class_acc.append(np.load(filename + '/classification_acc.npy'))
 
     return rewards, test_rewards, class_acc
@@ -63,27 +63,27 @@ def show_results_multiples(names, vocab_size, message_length, ylim=[0.8, 1.01], 
         plt.ylim(ylim)
         final_R_train = mean_R_train[-1]
         final_R_test = np.mean([R for R in test_rewards], axis=0)[-1]
-       
+
         if '/' in name:
             name = name.partition('/')[0]
 
-        title = str(name) + '\ntrain: ' + str(round(final_R_train,3)) + ', test: ' + str(round(final_R_test, 3))
-        
-        if len(class_acc) > 0: 
+        title = str(name) + '\ntrain: ' + str(round(final_R_train, 3)) + ', test: ' + str(round(final_R_test, 3))
+
+        if len(class_acc) > 0:
             try:
                 title = title + '\nclass: ' + str(round(np.mean([class_acc[i][-1] for i in range(n_runs)]), 3))
-            except: 
+            except:
                 title = title + '\nclass: ' + str(np.NaN)
 
         plt.title(title)
         plt.xlabel('epoch')
         plt.ylabel('reward')
-        
-    fig.legend(labels=['mean', 'min', 'max'],   # The labels for each line
-               loc="lower center",   # Position of legend
-               borderaxespad=-0.3,    # Small spacing around legend box
+
+    fig.legend(labels=['mean', 'min', 'max'],  # The labels for each line
+               loc="lower center",  # Position of legend
+               borderaxespad=-0.3,  # Small spacing around legend box
                ncol=n_runs)
-               
+
     fig.tight_layout()
 
 
@@ -110,8 +110,8 @@ def show_rewards(names, vocab_size, message_length, mode='language_emergence_bas
 
         print('train reward: ', round(mean_R_train, 3), 'bci', bci_train)
         print('test reward: ', round(mean_R_test, 3), 'bci', bci_test)
-        
-        if len(class_acc) > 0: 
+
+        if len(class_acc) > 0:
             mean_acc_class = np.mean([acc[-1] for acc in class_acc])
             bci_acc_class = bootstrap_mean(np.array([acc[-1] for acc in class_acc]))
             print('class acc', round(mean_acc_class, 3), 'bci', bci_acc_class)

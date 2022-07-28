@@ -5,6 +5,7 @@ import numpy as np
 import scipy.spatial.distance as distance
 from utils.config import get_indices, get_config
 from nn.agents import Sender, Receiver
+from nn.flexible_role_agents import FlexibleRoleAgent
 from utils.rsa import CorrelatedPairwiseSimilarity as cps
 from utils.load_data import collect_examples_per_class
 
@@ -56,7 +57,7 @@ def featurewise_dissimilarity(similarity_matrix):
         :param similarity_matrix: similarity matrix as calculated with class_similarity_matrix
         :return:    for each class, similarities with respect to other classes NOT sharing the same feature for either
                     color size or shape --> dimensionality is [n_classes, n_features], here [64,3]
-                    
+
         commented part was used to correct the all bias values for mutual attenutation
     """
 
@@ -180,7 +181,7 @@ def save_rsa_cnns(n_examples=50, mode='basic', sf=None, tw=None):
 
 
 def calculate_and_save_rsa_scores(mode, conditions, cnn_keys_sender, cnn_keys_receiver, vs=4, n_runs=10, n_epochs=150,
-                                  agent='both', n_examples=50):
+                                  agent='both', n_examples=50, n_senders=1, n_receivers=1):
     """Calculate and save rsa scores for several runs.
     Scores are calculated between the visual representations and the input (all attributes, and individual attributes.
     In addition, scores are calculated between the two agents before and after training.
@@ -194,6 +195,8 @@ def calculate_and_save_rsa_scores(mode, conditions, cnn_keys_sender, cnn_keys_re
     :param n_epochs: number of training epochs
     :param agent: for which agent to calculate the scores ('sender', 'receiver', or 'both')
     :param n_examples: number of examples per class to use for calculating the scores
+    :param n_senders: number of sender agents
+    :param n_receivers: number of receiver agents
     :return: None --> save the rsa scores in the respective results file for each run
     """
     images, attributes = collect_examples_per_class(n_examples=n_examples)
@@ -201,9 +204,18 @@ def calculate_and_save_rsa_scores(mode, conditions, cnn_keys_sender, cnn_keys_re
     scale_attributes = attributes[:, 4:8]
     shape_attributes = attributes[:, 8:12]
 
+    if 'flexible_role' in mode:
+        assert n_senders == 1 and n_receivers == 1, "not implemented for flexible role + population"
+        name1 = 'agent1'
+        name2 = 'agent2'
+    else:
+        name1 = 'sender'
+        name2 = 'receiver'
+
     for c, condition in enumerate(conditions):
 
         for run in range(n_runs):
+            print(condition, run)
 
             path = 'results/' + mode + '/' + condition + str(run) + '/vs' + str(vs) + '_ml3/'
 
@@ -214,56 +226,93 @@ def calculate_and_save_rsa_scores(mode, conditions, cnn_keys_sender, cnn_keys_re
                                         outputs=cnn_sender.get_layer('dense_1').output)
             features_sender_orig = cnn_sender(images).numpy()
 
-            sender = Sender(vs, 3, 128, 128, cnn_sender)
-            sender.load_weights(path + 'sender_weights_epoch' + str(n_epochs - 1) + '/')
-            features_sender_trained = sender.vision_module(images).numpy()
-
             cnn_receiver = tf.keras.models.load_model(all_cnn_paths[cnn_keys_receiver[c]])
             cnn_receiver = tf.keras.Model(inputs=cnn_receiver.input,
                                           outputs=cnn_receiver.get_layer('dense_1').output)
             features_receiver_orig = cnn_receiver(images).numpy()
 
-            receiver = Receiver(vs, 3, 128, 128, cnn_receiver, n_distractors=2)
-            receiver.load_weights(path + 'receiver_weights_epoch' + str(n_epochs - 1) + '/')
-            features_receiver_trained = receiver.vision_module(images).numpy()
+            all_features_sender_trained = []
+            all_features_receiver_trained = []
 
-            if agent == 'both' or agent == 'sender':
-                correlation_scores['rsa_sender_attributes'] = cps.compute_similarity(
-                    attributes, features_sender_trained, distance.cosine, distance.cosine
-                )
-                correlation_scores['rsa_sender_color'] = cps.compute_similarity(
-                    color_attributes, features_sender_trained, distance.cosine, distance.cosine
-                )
-                correlation_scores['rsa_sender_scale'] = cps.compute_similarity(
-                    scale_attributes, features_sender_trained, distance.cosine, distance.cosine
-                )
-                correlation_scores['rsa_sender_shape'] = cps.compute_similarity(
-                    shape_attributes, features_sender_trained, distance.cosine, distance.cosine
-                )
+            for i in range(n_senders):
+                print("sender", i)
 
-            if agent == 'both' or agent == 'receiver':
-                correlation_scores['rsa_receiver_attributes'] = cps.compute_similarity(
-                    attributes, features_receiver_trained, distance.cosine, distance.cosine
-                )
-                correlation_scores['rsa_receiver_color'] = cps.compute_similarity(
-                    color_attributes, features_receiver_trained, distance.cosine, distance.cosine
-                )
-                correlation_scores['rsa_receiver_scale'] = cps.compute_similarity(
-                    scale_attributes, features_receiver_trained, distance.cosine, distance.cosine
-                )
-                correlation_scores['rsa_receiver_shape'] = cps.compute_similarity(
-                    shape_attributes, features_receiver_trained, distance.cosine, distance.cosine
-                )
+                if n_receivers > 1:
+                    S_append = str(i)
+                else:
+                    S_append = ''
+
+                if not 'flexible_role' in mode:
+                    sender = Sender(vs, 3, 128, 128, cnn_sender)
+                    sender.load_weights(path + name1 + S_append + '_weights_epoch' + str(n_epochs - 1) + '/')
+                else:
+                    sender = FlexibleRoleAgent(vs, 3, 128, 128, cnn_sender)
+                    sender.load_weights(path + name1 + '_weights_epoch' + str(n_epochs - 1) + '/')
+
+                features_sender_trained = sender.vision_module(images).numpy()
+                all_features_sender_trained.append(features_sender_trained)
+
+                if agent == 'both' or agent == 'sender':
+                    correlation_scores['rsa_' + name1 + S_append + '_attributes'] = cps.compute_similarity(
+                        attributes, features_sender_trained, distance.cosine, distance.cosine
+                    )
+                    correlation_scores['rsa_' + name1 + S_append + '_color'] = cps.compute_similarity(
+                        color_attributes, features_sender_trained, distance.cosine, distance.cosine
+                    )
+                    correlation_scores['rsa_' + name1 + S_append + '_scale'] = cps.compute_similarity(
+                        scale_attributes, features_sender_trained, distance.cosine, distance.cosine
+                    )
+                    correlation_scores['rsa_' + name1 + S_append + '_shape'] = cps.compute_similarity(
+                        shape_attributes, features_sender_trained, distance.cosine, distance.cosine
+                    )
+
+            for i in range(n_receivers):
+                print("receiver", i)
+
+                if n_receivers > 1:
+                    R_append = str(i)
+                else:
+                    R_append = ''
+
+                if not 'flexible_role' in mode:
+                    receiver = Receiver(vs, 3, 128, 128, cnn_receiver, n_distractors=2)
+                    receiver.load_weights(path + name2 + R_append + '_weights_epoch' + str(n_epochs - 1) + '/')
+                else:
+                    receiver = FlexibleRoleAgent(vs, 3, 128, 128, cnn_receiver, n_distractors=2)
+                    receiver.load_weights(path + name2 + '_weights_epoch' + str(n_epochs - 1) + '/')
+
+                features_receiver_trained = receiver.vision_module(images).numpy()
+                all_features_receiver_trained.append(features_receiver_trained)
+
+                if agent == 'both' or agent == 'receiver':
+                    correlation_scores['rsa_' + name2 + R_append + '_attributes'] = cps.compute_similarity(
+                        attributes, features_receiver_trained, distance.cosine, distance.cosine
+                    )
+                    correlation_scores['rsa_' + name2 + R_append + '_color'] = cps.compute_similarity(
+                        color_attributes, features_receiver_trained, distance.cosine, distance.cosine
+                    )
+                    correlation_scores['rsa_' + name2 + R_append + '_scale'] = cps.compute_similarity(
+                        scale_attributes, features_receiver_trained, distance.cosine, distance.cosine
+                    )
+                    correlation_scores['rsa_' + name2 + R_append + '_shape'] = cps.compute_similarity(
+                        shape_attributes, features_receiver_trained, distance.cosine, distance.cosine
+                    )
 
             # only needs to be calculated once since its the same for all runs
             if run == 0:
                 rsa_sender_receiver_orig = cps.compute_similarity(
                     features_sender_orig, features_receiver_orig, distance.cosine, distance.cosine)
-                correlation_scores['rsa_sender_receiver_orig'] = rsa_sender_receiver_orig
+                correlation_scores['rsa_' + name1 + '_' + name2 + '_orig'] = rsa_sender_receiver_orig
             else:
-                correlation_scores['rsa_sender_receiver_orig'] = rsa_sender_receiver_orig
+                correlation_scores['rsa_' + name1 + '_' + name2 + '_orig'] = rsa_sender_receiver_orig
 
-            correlation_scores['rsa_sender_receiver_trained'] = cps.compute_similarity(
-                features_sender_trained, features_receiver_trained, distance.cosine, distance.cosine)
+            for i in range(n_senders):
+                S_append = str(i) if n_senders > 1 else ''
+                for j in range(n_receivers):
+                    R_append = str(j) if n_receivers > 1 else ''
+                    correlation_scores[
+                        'rsa_' + name1 + S_append + '_' + name2 + R_append + '_trained'] = cps.compute_similarity(
+                        all_features_sender_trained[i], all_features_receiver_trained[j], distance.cosine,
+                        distance.cosine)
 
             pickle.dump(correlation_scores, open(path + 'correlated_similarity_vision.pkl', 'wb'))

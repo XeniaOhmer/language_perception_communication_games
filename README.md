@@ -75,7 +75,7 @@ For example, if one were to use the command
 python train_cnn.py -d data.h5 -s 0.6 -t color-size -dw 0.4 -p params.pkl
 
 This would result in a training run using the data file "data.h5" in the working directory, a smoothing factor
-of 0.6, enforcing the perceptual traits color and size with a weighting of 0.4 for the color attribute and 0.6
+of 0.6, enforcing the perceptual traits of color and scale with a weighting of 0.4 for the color attribute and 0.6
 for the size (or scale) attribute, with a CNN model specified according to a dictionary loaded from a file
 named params.pkl in the working directory (which must have keys corresponding to the keyword arguments in the
 GenericNet class, as mentioned above).
@@ -91,7 +91,7 @@ The agents can be trained on the communication game using 'train_refgame.py'. Th
 
 #### How results are saved 
 
-Results are saved in a folder 'results/' in the main directory. The name under which results are stored are specified by the command line arguments *--mode* giving the subfolder and *--name* giving the subsubfolder. E.g. *--mode language_emergence_basic --run default* will store the results for the first run under 'results/language_emergence_basic/default0/' and so on. Another subfolder is created automatically depending on vocab size and message length, such that the results are finally stored in folders like 'results/language_emergence_basic/default0/vs4_ml3/'. In each of these folders, we save the parameters of the run, a log file monitoring the training progress, the training and test rewards, sender and receiver loss, message length, and potentially classification accuracies. 
+Results are saved in a folder 'results/' in the main directory. The name under which results are stored is specified by the command line arguments *--mode* giving the subfolder and *--name* giving the subsubfolder. E.g. *--mode language_emergence_basic --run default* will store the results for the first run under 'results/language_emergence_basic/default0/' and so on. Another subfolder is created automatically depending on vocab size and message length, such that the results are finally stored in folders like 'results/language_emergence_basic/default0/vs4_ml3/'. In each of these folders, we save the parameters of the run, a log file monitoring the training progress, the training and test rewards, sender and receiver loss, message length, and potentially classification accuracies. 
 
 
 #### Training for the different setups 
@@ -114,8 +114,7 @@ The biases that can be provided are *default*, *color*, *scale*, *shape*, *all*,
 *Example*:\
 python train_refgame.py --sim_sender color --sim_receiver default --sf_sender 0-6 --sf_receiver 0-0 --mode language_emergence_basic --run color_default
 
-All other parameters have the right default values. In the control simulations where only two out of three attributes are relevant, the irrelevant attribute is provided with *--irrelevant_attribute* (color, scale, or shape).
-
+All other parameters have the right default values. 
 
 **2. Influence of perception on language - language learning**
 
@@ -131,8 +130,15 @@ You need to specify a bias and smoothing factor for an already trained sender. T
 *Example*\
 python train_refgame.py --sim_sender default --sim_receiver default --sf_sender 0-0 --sf_receiver 0-0 --train_vision_sender True --train_vision_receiver True --classification True --mode language_emergence_train_vision --run default
 
-Again, training of the vision modules and training on the classification task need to be indicated. 
+Again, training of the vision modules and training on the classification task need to be indicated. For the control simulations without classification loss, remove the --classification command line argument (defaults to False). 
 
+
+**4. Control simulations**
+
+* Games with irrelevant attributes: If only two out of three attributes are relevant, the irrelevant attribute is provided with *--irrelevant_attribute* (color, scale, or shape)
+* Influence of language on perception without classification loss: remove the argument *--classification True*, then classification defaults to False
+* Multiple senders and receivers: Add the number of senders and receivers (e.g. 2 and 2): *--n_senders 2 --n_receivers 2*
+* Flexible-role agents: Use 'train_refgame_flexible_role.py' instead of 'train_refgame.py'. Command line arguments are slightly adapted as both agents act as senders and receivers. The flexible-role simulations only work for the classical setup of one sender and one receiver. 
 
 
 
@@ -140,13 +146,21 @@ Again, training of the vision modules and training on the classification task ne
 
 All results can be found in the 'results.zip' folder of the associated OSF project. In case you would like to run the analyses, download and unzip them, then move them into the main directory of the repository. (We separated them because they add up to ~3GB.)
 
-The different subfolder contain the following results: 
+The main results are in these subfolders: 
 * language_emergence_basic: influence of perception on language / evolutionary analysis
 * language_learning_train_vision: influence of language on perception, language learning scenario
 * language_emergence train_vision: influence of language on perception, language emergence scenario
 * language_emergence_color_irrelevant, language_emergence_shape_irrelevant, language_emergence_scale_irrelevant: control simulations (see evolutionary analysis results)
 
-These results are analyzed using the jupyter notebooks in the main directors:
+Results presented in the supplementary material are in these subfolders: 
+* language_learning train_vision_no_classification: influence of language on perception without classification loss, language learning scenario
+* language_emergence_train_vision_no_classification: influence of language on perception without classification loss, language emergence scenario
+* language_emergence_2senders-2receivers: influence of perception on language with 2 senders and 2 receivers
+* language_emergence_train_vision_2senders-2receivers: influence of language on perception with 2 senders and 2 receivers, language emergence scenario
+* language_emergence_flexible_role: influence of perception on language with flexible-role agents
+* language_emergence_train_vision_flexble_role: influence of language on perception with flexible-role agents, language emergence scenario
+
+These results are analyzed using the jupyter notebooks in the main directories:
 * label_smoothing_analysis: analyze the effects of label smoothing on the CNN representations for different conditions
 * training_analysis: analyze training and test rewards
 * three_way_entropy_analysis: show that an entropy analysis of the sender side (input objects - messages) is symmetric to an entropy analysis of the receiver side (messages - selected objects), which is why we only analyze the sender. 
