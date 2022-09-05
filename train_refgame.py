@@ -1,8 +1,10 @@
+import tensorflow as tf
 from tensorflow.keras import models
 from utils.referential_data import *
 from utils.config import *
-from nn.agents import *
-from nn.training import *
+from utils.train import load_data
+from nn.training import Trainer
+from nn.agents import Sender, Receiver, ClassificationSender, ClassificationReceiver
 import os
 import pickle
 import argparse
@@ -20,26 +22,32 @@ parser.add_argument("--entropy_coeff_sender", type=float, default=0.02, help='en
 parser.add_argument("--entropy_coeff_receiver", type=float, default=0.02, help='entropy regularization term, receiver')
 parser.add_argument("--entropy_annealing", type=float, default=1.,
                     help='annealing schedule for the entropy regularization, 1 means no annealing')
+parser.add_argument("--n_senders", type=int, default=1, help='number of senders')
+parser.add_argument("--n_receivers", type=int, default=1, help='number of receivers')
 parser.add_argument("--n_epochs", type=int, default=150, help='number of training epochs')
 parser.add_argument("--batch_size", type=int, default=128, help='batch size')
 parser.add_argument("--sim_sender", type=str, default='default', help='bias condition sender')
 parser.add_argument("--sim_receiver", type=str, default='default', help='bias condition receiver')
 parser.add_argument("--sf_sender", type=str, default='0-0', help='smoothing factor sender')
 parser.add_argument("--sf_receiver", type=str, default='0-0', help='smoothing factor receiver')
-parser.add_argument("--run", type=str, default='default', help='name of the run')
+parser.add_argument("--run", type=str, default='test', help='name of the run')
 parser.add_argument("--learning_rate", type=float, default=0.0005, help='learning rate for training')
 parser.add_argument("--n_distractors", type=int, default=2, help='number of distractors for receiver')
-parser.add_argument("--mode", type=str, default='language_emergence_basic', help='name of results folder')
+parser.add_argument("--mode", type=str, default='test', help='name of results folder')
 parser.add_argument("--train_vision_sender", type=bool, default=False, help='whether to train sender vision module')
 parser.add_argument("--train_vision_receiver", type=bool, default=False, help='whether to train receiver vision module')
 parser.add_argument("--classification", type=bool, default=False, help='whether classification is also trained')
-parser.add_argument("--load_sender_epoch", type=int, default=None, help='if sender is fixed, which epoch to load')
+parser.add_argument("--load_sender_from", type=str, default=None, help='if sender is fixed, subdir with sender weights')
+parser.add_argument("--load_sender_epoch", type=int, default=150, help='which epoch to load for fixed sender')
 parser.add_argument("--flexible_message_length", type=bool, default=False,
                     help='whether message length is fixed or flexible')
 parser.add_argument("--length_cost", type=float, default=0.0,
                     help='additional cost term for producing longer messages, only makes sense if length is flexible')
 parser.add_argument("--irrelevant_attribute", type=str, default=None, help='indicate if an attribute is irrelevant')
 parser.add_argument("--n_runs", type=int, default=10, help='number of runs for this simulation')
+parser.add_argument("--analyze_language", type=bool, default=False, help="whether to calculate and store entropy scores")
+parser.add_argument("--analyze_vision", type=bool, default=False, help="whether to calculate and store rsa scores")
+parser.add_argument("--save_weights", type=bool, default=False, help="whether to save agents' weights")
 args = parser.parse_args()
 
 if args.flexible_message_length:
@@ -47,7 +55,7 @@ if args.flexible_message_length:
 else:
     effective_vocab_size = args.vocab_size
 
-if args.load_sender_epoch is not None:
+if args.load_sender_from is not None:
     sender_fixed = True
     sender_epoch = args.load_sender_epoch - 1
 else:
@@ -89,6 +97,8 @@ for r in range(args.n_runs):
               "classification": args.classification,
               "irrelevant_feature": args.irrelevant_attribute,
               "fixed_sender": sender_fixed,
+              "n_senders": args.n_senders,
+              "n_receivers": args.n_receivers
               }
 
     if not os.path.exists(path):
@@ -112,73 +122,86 @@ for r in range(args.n_runs):
     cnn_path_sender = all_cnn_paths[args.sim_sender + args.sf_sender]
     cnn_path_receiver = all_cnn_paths[args.sim_receiver + args.sf_receiver]
 
-    cnn_sender = models.load_model(cnn_path_sender)
-    vision_module_sender = tf.keras.Model(inputs=cnn_sender.input,
-                                          outputs=cnn_sender.get_layer('dense_1').output)
-
-    cnn_receiver = models.load_model(cnn_path_receiver)
-    vision_module_receiver = tf.keras.Model(inputs=cnn_receiver.input,
-                                            outputs=cnn_receiver.get_layer('dense_1').output)
+    vision_modules_sender = []
+    for i in range(args.n_senders):
+        cnn_sender = models.load_model(cnn_path_sender)
+        vision_modules_sender.append(tf.keras.Model(inputs=cnn_sender.input,
+                                                    outputs=cnn_sender.get_layer('dense_1').output))
+    vision_modules_receiver = []
+    for i in range(args.n_receivers):
+        cnn_receiver = models.load_model(cnn_path_receiver)
+        vision_modules_receiver.append(tf.keras.Model(inputs=cnn_receiver.input,
+                                                      outputs=cnn_receiver.get_layer('dense_1').output))
 
     # initialize sender, receiver and training classes
+    senders = []
+    receivers = []
 
-    if args.classification and args.train_vision_sender:
-        classification_module_sender = tf.keras.Sequential([cnn_sender.get_layer('dense_2')])
-        sender = ClassificationSender(
-            effective_vocab_size,
-            args.message_length,
-            args.embed_dim,
-            args.hidden_dim,
-            vision_module_sender,
-            classification_module_sender,
-            flexible_message_length=args.flexible_message_length,
-            activation=args.activation,
-            train_vision=args.train_vision_sender)
-    else:
-        vision_module = vision_module_sender if args.train_vision_sender else None
-        sender = Sender(
-            effective_vocab_size,
-            args.message_length,
-            args.embed_dim,
-            args.hidden_dim,
-            vision_module,
-            flexible_message_length=args.flexible_message_length,
-            activation=args.activation,
-            train_vision=args.train_vision_sender)
-        if sender_fixed:
-            sender_path = ('results/language_emergence_basic/' + args.sim_sender + str(r) + '/vs'
-                           + str(args.vocab_size) + '_ml' + str(args.message_length) + '/')
-            sender.load_weights(sender_path + 'sender_weights_epoch' + str(sender_epoch) + '/')
+    for i in range(args.n_senders):
+        if args.classification and args.train_vision_sender:
+            classification_module_sender = tf.keras.Sequential([cnn_sender.get_layer('dense_2')])
+            sender = ClassificationSender(
+                effective_vocab_size,
+                args.message_length,
+                args.embed_dim,
+                args.hidden_dim,
+                vision_modules_sender[i],
+                classification_module_sender,
+                flexible_message_length=args.flexible_message_length,
+                activation=args.activation,
+                train_vision=args.train_vision_sender)
+        else:
+            vision_module = vision_modules_sender[i] if args.train_vision_sender else None
+            sender = Sender(
+                effective_vocab_size,
+                args.message_length,
+                args.embed_dim,
+                args.hidden_dim,
+                vision_module,
+                flexible_message_length=args.flexible_message_length,
+                activation=args.activation,
+                train_vision=args.train_vision_sender)
+            if sender_fixed:
+                sender_path = ('results/' + args.load_sender_from + args.sim_sender + str(r) + '/vs'
+                               + str(args.vocab_size) + '_ml' + str(args.message_length) + '/')
+                if args.n_senders > 1:
+                    sender.load_weights(sender_path + 'sender' + str(i) + '_weights_epoch' + str(sender_epoch) + '/')
+                else:
+                    sender.load_weights(sender_path + 'sender_weights_epoch' + str(sender_epoch) + '/')
+        senders.append(sender)
 
-    if args.classification and args.train_vision_receiver:
-        classification_module_receiver = tf.keras.Sequential([cnn_receiver.get_layer('dense_2')])
-        receiver = ClassificationReceiver(
-            effective_vocab_size,
-            args.message_length,
-            args.embed_dim,
-            args.hidden_dim,
-            vision_module_receiver,
-            classification_module_receiver,
-            flexible_message_length=args.flexible_message_length,
-            activation=args.activation,
-            image_dim=image_dim,
-            n_distractors=args.n_distractors,
-            train_vision=args.train_vision_receiver)
-    else:
-        vision_module = vision_module_receiver if args.train_vision_receiver else None
-        receiver = Receiver(
-            effective_vocab_size,
-            args.message_length,
-            args.embed_dim,
-            args.hidden_dim,
-            vision_module,
-            flexible_message_length=args.flexible_message_length,
-            activation=args.activation,
-            n_distractors=args.n_distractors,
-            image_dim=image_dim,
-            train_vision=args.train_vision_receiver)
+    for i in range(args.n_receivers):
+        if args.classification and args.train_vision_receiver:
+            classification_module_receiver = tf.keras.Sequential([cnn_receiver.get_layer('dense_2')])
+            receiver = ClassificationReceiver(
+                effective_vocab_size,
+                args.message_length,
+                args.embed_dim,
+                args.hidden_dim,
+                vision_modules_receiver[i],
+                classification_module_receiver,
+                flexible_message_length=args.flexible_message_length,
+                activation=args.activation,
+                image_dim=image_dim,
+                n_distractors=args.n_distractors,
+                train_vision=args.train_vision_receiver)
+        else:
+            vision_module = vision_modules_receiver[i] if args.train_vision_receiver else None
+            receiver = Receiver(
+                effective_vocab_size,
+                args.message_length,
+                args.embed_dim,
+                args.hidden_dim,
+                vision_module,
+                flexible_message_length=args.flexible_message_length,
+                activation=args.activation,
+                n_distractors=args.n_distractors,
+                image_dim=image_dim,
+                train_vision=args.train_vision_receiver)
+        receivers.append(receiver)
 
-    trainer = Trainer(sender, receiver,
+    trainer = Trainer(senders,
+                      receivers,
                       entropy_coeff_sender=args.entropy_coeff_sender,
                       entropy_coeff_receiver=args.entropy_coeff_receiver,
                       length_cost=args.length_cost,
@@ -199,22 +222,19 @@ for r in range(args.n_runs):
     if args.classification:
         all_classification_accurracies = []
 
-    train_data = np.load('3Dshapes_subset/train_data.npy')
-    train_labels = np.load('3Dshapes_subset/train_labels.npy')
-    test_data = np.load('3Dshapes_subset/test_data.npy')
-    test_labels = np.load('3Dshapes_subset/test_labels.npy')
+    (train_data, train_labels), (test_data, test_labels), _, _ = load_data((64, 64, 3))
 
     n_samples = len(train_data)
 
     if not args.train_vision_sender:
-        sender_train = vision_module_sender.predict(train_data)
-        sender_test = vision_module_sender.predict(test_data)
+        sender_train = vision_modules_sender[0].predict(train_data)
+        sender_test = vision_modules_sender[0].predict(test_data)
     else:
         sender_train = train_data
         sender_test = test_data
     if not args.train_vision_receiver:
-        receiver_train = vision_module_receiver.predict(train_data)
-        receiver_test = vision_module_receiver.predict(test_data)
+        receiver_train = vision_modules_receiver[0].predict(train_data)
+        receiver_test = vision_modules_receiver[0].predict(test_data)
     else:
         receiver_train = train_data
         receiver_test = test_data
@@ -287,9 +307,19 @@ for r in range(args.n_runs):
 
         # save sender and receiver weights
 
-        if epoch == args.n_epochs - 1:
-            trainer.receiver.save_weights(path + 'receiver_weights_epoch' + str(epoch) + '/')
-            trainer.sender.save_weights(path + 'sender_weights_epoch' + str(epoch) + '/')
+        if args.save_weights and epoch == args.n_epochs - 1:
+            for i in range(args.n_senders):
+                if args.n_senders > 1:
+                    appendix = str(i)
+                else:
+                    appendix = ''
+                trainer.senders[i].save_weights(path + 'sender' + appendix + '_weights_epoch' + str(epoch) + '/')
+            for i in range(args.n_receivers):
+                if args.n_receivers > 1:
+                    appendix = str(i)
+                else:
+                    appendix = ''
+                trainer.receivers[i].save_weights(path + 'receiver' + appendix + '_weights_epoch' + str(epoch) + '/')
 
     # save training results
 
@@ -300,3 +330,29 @@ for r in range(args.n_runs):
     np.save(path + 'test_reward.npy', all_test_reward)
     if args.classification:
         np.save(path + 'classification_acc.npy', all_classification_accurracies)
+
+    # analyze vision
+
+    if args.analyze_vision:
+
+        from utils.vision_analysis import *
+        if sender_fixed:
+            agent_type = 'receiver'
+        else:
+            agent_type = 'both'
+        cnn_sender = models.load_model(cnn_path_sender)
+        cnn_sender = tf.keras.Model(inputs=cnn_sender.input, outputs=cnn_sender.get_layer('dense_1').output)
+        cnn_receiver = models.load_model(cnn_path_receiver)
+        cnn_receiver = tf.keras.Model(inputs=cnn_receiver.input, outputs=cnn_receiver.get_layer('dense_1').output)
+        calculate_and_save_rsa_scores(path, trainer.senders, trainer.receivers, cnn_sender, cnn_receiver,
+                                      agent_type=agent_type, n_examples=50)
+
+    # analyze language
+
+    if args.analyze_language:
+
+        from utils.language_analysis import *
+        cnn_sender = models.load_model(cnn_path_sender)
+        cnn_sender = tf.keras.Model(inputs=cnn_sender.input, outputs=cnn_sender.get_layer('dense_1').output)
+        calculate_and_save_entropy_scores(path, trainer.senders, cnn_sender)
+

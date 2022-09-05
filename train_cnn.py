@@ -1,26 +1,20 @@
-# USAGE
-# python run_mnist_training.py
-
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-# import the necessary packages
-from models import GenericNet
-from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras.optimizers import SGD
-from tensorflow import device
 import tensorflow as tf
-
 import utils
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import gc
-
+import shutil
+from models import GenericNet
+from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.optimizers import SGD
+from tensorflow import device
 from pathlib import Path
 from datetime import datetime
-import shutil
-
 from config import shapes_config as config
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 
 def parse_command_line_args(args):
@@ -41,13 +35,14 @@ def parse_command_line_args(args):
 
     # defaults to [0.5, 0.5] for equal trait weighting
     assert 1 > args['dualweight'] > 0, 'dualweight parameter must be in (0,1)'
-    trait_weights = [args['dualweight'], 1-args['dualweight']]
+    trait_weights = [args['dualweight'], 1 - args['dualweight']]
 
     return sf_list, trait_weights, experiment_traits
 
+
 # to fix cudnn handle error
 utils.train.configure_gpu_options()
-args = utils.train.get_command_line_args(run_type='train')
+args = utils.train.get_command_line_args()
 
 # this forces the same weights for all dual trait combinations with the trait_weights variable. 
 # For more flexibility you can redefine it as a custom dictionary with the respective trait 
@@ -138,7 +133,7 @@ for trait_to_enforce in experiment_traits:
             fname = os.path.sep.join([checkpoints_path,
                                       "weights-sfactor-{:.2f}".format(FACTOR) + "-{epoch:03d}-{val_loss:.4f}.hdf5"])
 
-            callbacks = [ModelCheckpoint(fname,  monitor='val_loss', save_freq='epoch')]
+            callbacks = [ModelCheckpoint(fname, monitor='val_loss', save_freq='epoch')]
 
             # ModelTrainer class expects training arguments as a dictionary
             training_args = dict()
@@ -146,11 +141,11 @@ for trait_to_enforce in experiment_traits:
             for kw in param_kws:
                 training_args[kw] = locals()[kw]
             sf_args = {'factor': FACTOR,
-                       'verbose' : True,
-                       'rel_comps' : relational_labels[trait_to_enforce]}
+                       'verbose': True,
+                       'rel_comps': relational_labels[trait_to_enforce]}
             mt = utils.ModelTrainer(model, train_data,
                                     train_args=training_args,
-                                    eval_args={'batch_size':batch_size},
+                                    eval_args={'batch_size': batch_size},
                                     sfunc=smooth_func,
                                     verbose=True,
                                     func_args=sf_args)
@@ -167,12 +162,12 @@ for trait_to_enforce in experiment_traits:
             finalEpoch_dir = os.path.join(args['checkpoints'], date_str, 'final_epochs')
             if trait_to_enforce in ['color-shape', 'color-size', 'shape-size']:
                 finalEpoch_fn = 'finalweights_lt-' + label_type + '_trait-' + trait_to_enforce + \
-                        '_tw-' + '{:.02f}'.format(tw[0])[-2:] + '_sf-' + str(FACTOR) + '.hdf5'
+                                '_tw-' + '{:.02f}'.format(tw[0])[-2:] + '_sf-' + str(FACTOR) + '.hdf5'
                 dataFN_out = os.path.join(
-                    finalEpoch_dir, 'expdata_tw-{:.2f}_sf-{:.2f}_trait-{}.pkl'.format(tw[0], FACTOR,trait_to_enforce))
+                    finalEpoch_dir, 'expdata_tw-{:.2f}_sf-{:.2f}_trait-{}.pkl'.format(tw[0], FACTOR, trait_to_enforce))
             else:
                 finalEpoch_fn = 'finalweights_lt-' + label_type + '_trait-' + trait_to_enforce + \
-                        '_sf-' + str(FACTOR) + '.hdf5'
+                                '_sf-' + str(FACTOR) + '.hdf5'
                 dataFN_out = os.path.join(
                     finalEpoch_dir, 'expdata_trait-{}_sf-{:.2f}.pkl'.format(trait_to_enforce, FACTOR))
             if not os.path.isdir(finalEpoch_dir):

@@ -5,13 +5,13 @@ from tensorflow.keras import optimizers
 
 class Trainer:
 
-    def __init__(self, sender, receiver, sender_lr=0.001, receiver_lr=0.001, length_cost=0.0,
+    def __init__(self, senders, receivers, sender_lr=0.001, receiver_lr=0.001, length_cost=0.0,
                  entropy_coeff_sender=0.0, entropy_coeff_receiver=0.0, classification=False,
                  train_vision_sender=False, train_vision_receiver=False, sender_fixed=False):
         """ Constructor.
 
-        :param sender: sender agent
-        :param receiver: receiver agent
+        :param senders: list of sender agents
+        :param receivers: list of receiver agents
         :param sender_lr: learning rate sender
         :param receiver_lr: learning rate receiver
         :param length_cost: message length cost (float)
@@ -22,17 +22,23 @@ class Trainer:
         :param train_vision_receiver: whether vision module of the receiver is trained (bool)
         :param sender_fixed: whether the sender is fixed completely (language learning scenario)
         """
-        self.receiver = receiver
-        self.sender = sender
-        self.sender_optimizer = optimizers.Adam(learning_rate=sender_lr)
-        self.receiver_optimizer = optimizers.Adam(learning_rate=receiver_lr)
+        self.receivers = receivers
+        self.senders = senders
+        self.n_senders = len(senders)
+        self.n_receivers = len(receivers)
+        self.sender_optimizers = []
+        self.receiver_optimizers = []
+        for i in range(self.n_senders):
+            self.sender_optimizers.append(optimizers.Adam(learning_rate=sender_lr))
+        for i in range(self.n_receivers):
+            self.receiver_optimizers.append(optimizers.Adam(learning_rate=receiver_lr))
         self.entropy_coeff_sender = entropy_coeff_sender
         self.entropy_coeff_receiver = entropy_coeff_receiver
         self.length_cost = length_cost
-        self.vocab_size = self.sender.vocab_size
-        self.max_message_length = self.sender.max_message_length
+        self.vocab_size = self.senders[0].vocab_size
+        self.max_message_length = self.senders[0].max_message_length
         self.classification = classification
-        self.flexible_message_length = self.sender.flexible_message_length
+        self.flexible_message_length = self.senders[0].flexible_message_length
         if not self.flexible_message_length:
             self.length_cost = 0
         self.train_vision_sender = train_vision_sender
@@ -56,19 +62,22 @@ class Trainer:
 
         for batch in data_loader:
 
+            s_idx = np.random.randint(self.n_senders)
+            r_idx = np.random.randint(self.n_receivers)
+
             with tf.GradientTape(persistent=True) as tape:
 
                 if not self.sender_fixed:
-                    tape.watch([self.sender.trainable_variables, self.receiver.trainable_variables])
+                    tape.watch([self.senders[s_idx].trainable_variables, self.receivers[r_idx].trainable_variables])
                 else:
-                    tape.watch(self.receiver.trainable_variables)
+                    tape.watch(self.receivers[r_idx].trainable_variables)
                 if not self.classification:
                     sender_input, receiver_input, labels = batch
                 else:
                     sender_input, receiver_input, labels, class_labels_sender, class_labels_receiver = batch
 
-                message, sender_logits, entropy_sender, message_length, _ = self.sender.forward(sender_input)
-                selection, receiver_logits, entropy_receiver = self.receiver.forward(message, receiver_input)
+                message, sender_logits, entropy_sender, message_length, _ = self.senders[s_idx].forward(sender_input)
+                selection, receiver_logits, entropy_receiver = self.receivers[r_idx].forward(message, receiver_input)
 
                 rewards_orig = tf.reduce_sum(labels * selection, axis=1)
                 std = tf.math.reduce_std(rewards_orig)
@@ -90,24 +99,28 @@ class Trainer:
 
                 if self.classification:
                     if self.train_vision_sender:
-                        prediction = self.sender.predict_class(sender_input)
+                        prediction = self.senders[s_idx].predict_class(sender_input)
                         sender_classification_loss = tf.keras.losses.categorical_crossentropy(
                             class_labels_sender, prediction)
                         sender_loss = sender_loss + sender_classification_loss
                     if self.train_vision_receiver:
-                        prediction = self.receiver.predict_class(
-                            np.array([receiver_input[i, np.argmax(labels[i]), :, :, :] for i in range(len(labels))])
+                        prediction = self.receivers[r_idx].predict_class(
+                            np.array(tf.boolean_mask(receiver_input, labels))
                         )
                         receiver_classification_loss = tf.keras.losses.categorical_crossentropy(
                             class_labels_receiver, prediction)
                         receiver_loss = receiver_loss + receiver_classification_loss
 
             if not self.sender_fixed:
-                sender_gradients = tape.gradient(sender_loss, self.sender.trainable_variables)
-                self.sender_optimizer.apply_gradients(zip(sender_gradients, self.sender.trainable_variables))
+                sender_gradients = tape.gradient(sender_loss, self.senders[s_idx].trainable_variables)
+                self.sender_optimizers[s_idx].apply_gradients(
+                    zip(sender_gradients, self.senders[s_idx].trainable_variables)
+                )
 
-            receiver_gradients = tape.gradient(receiver_loss, self.receiver.trainable_variables)
-            self.receiver_optimizer.apply_gradients(zip(receiver_gradients, self.receiver.trainable_variables))
+            receiver_gradients = tape.gradient(receiver_loss, self.receivers[r_idx].trainable_variables)
+            self.receiver_optimizers[r_idx].apply_gradients(
+                zip(receiver_gradients, self.receivers[r_idx].trainable_variables)
+            )
 
             rewards_epoch.append(tf.reduce_mean(rewards_orig))
             sender_loss_epoch.append(tf.reduce_mean(sender_loss))
@@ -121,20 +134,23 @@ class Trainer:
         """ evaluate agent's communication performance
 
         :param data_loader: tf data loader
-        :return: mean validation rewards
+        :return: mean test rewards
         """
 
-        val_rewards = []
+        test_rewards = []
 
         for batch in data_loader:
+            s_idx = np.random.randint(self.n_senders)
+            r_idx = np.random.randint(self.n_receivers)
+
             sender_input, receiver_input, labels = batch
-            message, _, _, _, _ = self.sender.forward(sender_input, training=False)
-            selection, _, _ = self.receiver.forward(message, receiver_input, training=False)
+            message, _, _, _, _ = self.senders[s_idx].forward(sender_input, training=False)
+            selection, _, _ = self.receivers[r_idx].forward(message, receiver_input, training=False)
 
             rewards = np.mean(selection == np.argmax(labels, axis=1))
-            val_rewards.append(tf.reduce_mean(rewards))
+            test_rewards.append(tf.reduce_mean(rewards))
 
-        return np.mean(val_rewards)
+        return np.mean(test_rewards)
 
     def evaluate_classification(self, data_loader):
         """ evaluate the agents' classification performance
@@ -150,11 +166,14 @@ class Trainer:
 
         for batch in data_loader:
 
+            s_idx = np.random.randint(self.n_senders)
+            r_idx = np.random.randint(self.n_receivers)
+
             agent_input, class_labels = batch
 
             if self.train_vision_sender:
-                vision_output = self.sender.vision_module(agent_input)
-                predictions = self.sender.classification_module(vision_output)
+                vision_output = self.senders[s_idx].vision_module(agent_input)
+                predictions = self.senders[s_idx].classification_module(vision_output)
                 class_labels_non_hot = tf.argmax(class_labels, axis=1)
                 predictions_non_hot = tf.argmax(predictions, axis=1)
                 if self.train_vision_receiver:
@@ -163,8 +182,8 @@ class Trainer:
                     all_accuracies.append(np.mean(class_labels_non_hot == predictions_non_hot))
 
             if self.train_vision_receiver:
-                vision_output = self.receiver.vision_module(agent_input)
-                predictions = self.receiver.classification_module(vision_output)
+                vision_output = self.receivers[r_idx].vision_module(agent_input)
+                predictions = self.receivers[r_idx].classification_module(vision_output)
                 class_labels_non_hot = tf.argmax(class_labels, axis=1)
                 predictions_non_hot = tf.argmax(predictions, axis=1)
                 if self.train_vision_sender:

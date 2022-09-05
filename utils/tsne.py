@@ -18,10 +18,10 @@ def calc_tsne(key, components=2, verbose=1, perplexity=100, n_iter=2000, n_examp
     :param n_examples: number of examples per class used to calculate the embedding
     :return: 2D embedding of the vision module features
     """
-    
+
     all_cnn_paths = get_cnn_paths()
     images, _ = collect_examples_per_class(n_examples=n_examples)
-    
+
     network = tf.keras.models.load_model(all_cnn_paths[key])
     vision_module = tf.keras.Model(inputs=network.input, outputs=network.get_layer('dense_1').output)
     features = vision_module(images)
@@ -40,13 +40,13 @@ def plot_tsne(tsne, points_per_class=50, title=None, alpha=0.2, n_examples=100):
     :param n_examples: number of examples used to generate the embeddings
     :return: None (plot the embedding)
     """
-    
+
     attribute_dict = get_attribute_dict()
     labels = []
-    for i in range(64): 
-        labels += [i]*n_examples
+    for i in range(64):
+        labels += [i] * n_examples
     labels = np.array(labels)
-    
+
     circle = mpath.Path.unit_circle()
     verts = np.copy(circle.vertices)
     verts[:, 1] *= 2
@@ -54,16 +54,16 @@ def plot_tsne(tsne, points_per_class=50, title=None, alpha=0.2, n_examples=100):
     colors = ['red', 'orange', 'teal', 'purple']
     sizes = [30, 70, 110, 150]
     shapes = ["s", "$\sqcap$", "o", 'd']
-    
-    plt.figure(figsize=(5,5))
-    
+
+    plt.figure(figsize=(5, 5))
+
     for i in range(64):
         atts = attribute_dict[i]
         color = colors[np.argmax(atts[0:4])]
         size = sizes[np.argmax(atts[4:8])]
         shape = shapes[np.argmax(atts[8:12])]
-        plt.scatter(tsne[labels == i,0][0:points_per_class],
-                    tsne[labels == i,1][0:points_per_class],
+        plt.scatter(tsne[labels == i, 0][0:points_per_class],
+                    tsne[labels == i, 1][0:points_per_class],
                     color=color, marker=shape, s=size, alpha=alpha)
-    if title: 
+    if title:
         plt.title(title, fontsize=15)

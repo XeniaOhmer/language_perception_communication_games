@@ -14,8 +14,8 @@ import argparse
 def load_default_model_params(dataset='shapes'):
     model_params = dict()
     if dataset == 'shapes':
-        model_params['conv_depths'] = [32,32]
-        model_params['fc_depths'] = [16,16]
+        model_params['conv_depths'] = [32, 32]
+        model_params['fc_depths'] = [16, 16]
         model_params['conv_pool'] = [True, False]
     else:
         raise ValueError('Default model for dataset \'{}\' not defined.'.format(dataset))
@@ -32,7 +32,7 @@ def sum_label_components(labels, rel_comps=None, factor=0.1, verbose=False):
     labels = labels.astype('float')
     for (idx, l) in enumerate(labels):
         true_class = int(np.nonzero(l)[0])
-        labels[idx] = (1-factor)*l + factor*rel_comps[true_class]
+        labels[idx] = (1 - factor) * l + factor * rel_comps[true_class]
 
     if verbose is True:
         print("[INFO] smoothing amount: {}".format(factor))
@@ -43,11 +43,9 @@ def sum_label_components(labels, rel_comps=None, factor=0.1, verbose=False):
     return labels
 
 
-def coarse_generic_relational_labels(label_map, trait_name=None):
-    
+def coarse_generic_relational_labels(label_map):
     num_classes = np.max([int(k) for k in label_map.keys()]) + 1
-    output_labels = [[] for _ in range(num_classes)]
-    output_dicts = [{} for _ in range(len(label_map[0]))] 
+    output_dicts = [{} for _ in range(len(label_map[0]))]
     for i in range(num_classes):
         traits_i = label_map[i]
         tmp_labels = [np.zeros(num_classes) for _ in range(len(traits_i))]
@@ -68,11 +66,9 @@ def coarse_generic_relational_labels(label_map, trait_name=None):
     return output_dicts
 
 
-def linear_relational_labels(label_map, trait_names=None, dataset='3D-shapes'):
-    
+def linear_relational_labels(label_map, trait_names=None):
     num_classes = np.max([int(k) for k in label_map.keys()]) + 1
-    output_labels = [[] for _ in range(num_classes)]
-    output_dicts = [{} for _ in range(len(label_map[0]))] 
+    output_dicts = [{} for _ in range(len(label_map[0]))]
     label_vals = [[] for _ in range(len(label_map[0]))]
     if trait_names is None:
         label_vals = [[] for _ in range(len(label_map[0]))]
@@ -85,22 +81,22 @@ def linear_relational_labels(label_map, trait_names=None, dataset='3D-shapes'):
     for (l_idx, labels) in enumerate(label_vals):
         if trait_names[l_idx] == 'color':
             for (i, val1) in enumerate(labels):
-                for val2 in labels[i+1:]:
+                for val2 in labels[i + 1:]:
                     # calculates distance circularly for color
                     x = min(val1, val2)
                     y = max(val1, val2)
-                    circular_diff = min(abs(x-y), abs(x-(y-1)))
-                    sim = 1/abs(circular_diff)
+                    circular_diff = min(abs(x - y), abs(x - (y - 1)))
+                    sim = 1 / abs(circular_diff)
                     if sim > max_sims[l_idx]:
                         max_sims[l_idx] = sim
         else:
             for (i, val1) in enumerate(labels):
-                for val2 in labels[i+1:]:
-                    sim = 1/abs(val1 - val2)
+                for val2 in labels[i + 1:]:
+                    sim = 1 / abs(val1 - val2)
                     if sim > max_sims[l_idx]:
                         max_sims[l_idx] = sim
-    equivalence_vals = [x*2 for x in max_sims]
-        
+    equivalence_vals = [x * 2 for x in max_sims]
+
     for i in range(num_classes):
         traits_i = label_map[i]
         tmp_labels = [np.zeros(num_classes) for _ in range(len(traits_i))]
@@ -116,7 +112,7 @@ def linear_relational_labels(label_map, trait_names=None, dataset='3D-shapes'):
                         # to do distance circularly since max value is adjacent to min value
                         x = min(traits_i[ii], traits_j[ii])
                         y = max(traits_i[ii], traits_j[ii])
-                        circular_diff = min(abs(x-y), abs(x-(y-1)))
+                        circular_diff = min(abs(x - y), abs(x - (y - 1)))
                         tmp_labels[ii][j] = 1 / circular_diff
                     else:
                         tmp_labels[ii][j] = 1 / abs(traits_i[ii] - traits_j[ii])
@@ -129,22 +125,22 @@ def linear_relational_labels(label_map, trait_names=None, dataset='3D-shapes'):
     return output_dicts
 
 
-def get_shape_color_labels(full_labels, 
+def get_shape_color_labels(full_labels,
                            trait_idxs=(2, 3, 4),
-                           balance_traits=True, 
+                           balance_traits=True,
                            trait_weights=None,
                            balance_type=2,
                            label_type='coarse'):
     possible_values = [[] for _ in range(len(trait_idxs))]
-    trait_names_by_idx = ['floorHue', 'wallHue', 'color', 'scale', 'shape', 'orientation'] 
+    trait_names_by_idx = ['floorHue', 'wallHue', 'color', 'scale', 'shape', 'orientation']
 
     # default trait_idxs set to (2,3,4) corresponding to color, scale, and shape
-    extracted_traits = [tuple(entry) for entry in list(full_labels[:,trait_idxs])]
-    
+    extracted_traits = [tuple(entry) for entry in list(full_labels[:, trait_idxs])]
+
     for tup in extracted_traits:
         for (idx, entry) in enumerate(tup):
             possible_values[idx].append(entry)
-    for (idx,p) in enumerate(possible_values):
+    for (idx, p) in enumerate(possible_values):
         possible_values[idx] = sorted(set(p))
 
     # since there were only 4 possible shapes, we extracted 4 approximately equally spaced
@@ -159,8 +155,8 @@ def get_shape_color_labels(full_labels,
         elif balance_type == 2:
             idxes_to_keep = [[0, 2, 4, 8], [0, 3, 5, 7]]
         values_to_keep = [[], []]
-        
-        for idx in [0,1]:
+
+        for idx in [0, 1]:
             for val_idx in idxes_to_keep[idx]:
                 values_to_keep[idx].append(possible_values[idx][val_idx])
         filtered_traits = []
@@ -176,7 +172,7 @@ def get_shape_color_labels(full_labels,
     trait_names = [trait_names_by_idx[i] for i in trait_idxs]
     unique_traits = sorted(set(extracted_traits))
     labels = np.zeros((len(extracted_traits), len(unique_traits)))
-    
+
     # these dictionaries are used to convert between indices for one-hot target vectors
     # and the corresponding trait combination that that entry represents, which defines the class
     # composition of the classification problem
@@ -189,14 +185,13 @@ def get_shape_color_labels(full_labels,
     if label_type == 'coarse':
         labels_template = coarse_generic_relational_labels(label2trait_map)
     elif label_type == 'linear':
-        labels_template = linear_relational_labels(label2trait_map, 
-                                                   dataset='3D-shapes',
+        labels_template = linear_relational_labels(label2trait_map,
                                                    trait_names=trait_names)
     test = coarse_generic_relational_labels(label2trait_map)
     relational_labels = dict()
     test_relational_labels = dict()
     # calculating for individual traits
-    for (i,k) in enumerate(trait_names):
+    for (i, k) in enumerate(trait_names):
         relational_labels[k] = labels_template[i]
         test_relational_labels[k] = test[i]
 
@@ -209,9 +204,9 @@ def get_shape_color_labels(full_labels,
     elif type(trait_weights) is list:
         tw_list = trait_weights
         trait_weights = dict()
-        for k in ['color-shape', 'color-size', 'shape-size']: 
+        for k in ['color-shape', 'color-size', 'shape-size']:
             trait_weights[k] = tw_list
-        print('trait_weights = ') 
+        print('trait_weights = ')
         print(trait_weights)
     relational_labels['color-shape'] = dict()
     relational_labels['color-size'] = dict()
@@ -221,24 +216,24 @@ def get_shape_color_labels(full_labels,
         relational_labels['color-shape'][idx] = 0
         relational_labels['color-size'][idx] = 0
         relational_labels['shape-size'][idx] = 0
-        for (i,k) in enumerate(trait_names):
+        for (i, k) in enumerate(trait_names):
             if k == 'color':
-                relational_labels['color-shape'][idx] += trait_weights['color-shape'][0]*labels_template[i][idx]
-                relational_labels['color-size'][idx] += trait_weights['color-shape'][0]*labels_template[i][idx]
+                relational_labels['color-shape'][idx] += trait_weights['color-shape'][0] * labels_template[i][idx]
+                relational_labels['color-size'][idx] += trait_weights['color-shape'][0] * labels_template[i][idx]
             elif k == 'scale':
-                relational_labels['shape-size'][idx] += trait_weights['shape-size'][1]*labels_template[i][idx]
-                relational_labels['color-size'][idx] += trait_weights['color-size'][1]*labels_template[i][idx]
+                relational_labels['shape-size'][idx] += trait_weights['shape-size'][1] * labels_template[i][idx]
+                relational_labels['color-size'][idx] += trait_weights['color-size'][1] * labels_template[i][idx]
             elif k == 'shape':
-                relational_labels['shape-size'][idx] += trait_weights['shape-size'][0]*labels_template[i][idx]
-                relational_labels['color-shape'][idx] += trait_weights['color-shape'][1]*labels_template[i][idx]
+                relational_labels['shape-size'][idx] += trait_weights['shape-size'][0] * labels_template[i][idx]
+                relational_labels['color-shape'][idx] += trait_weights['color-shape'][1] * labels_template[i][idx]
 
     # calculating for all traits
     relational_labels['all'] = dict()
     for k in labels_template[0].keys():
         relational_labels['all'][k] = 0
         for lab in labels_template:
-            relational_labels['all'][k] += 1/len(labels_template)*lab[k]
-    
+            relational_labels['all'][k] += 1 / len(labels_template) * lab[k]
+
     # generating one-hot labels
     for (i, traits) in enumerate(extracted_traits):
         labels[i, trait2label_map[traits]] = 1
@@ -246,15 +241,14 @@ def get_shape_color_labels(full_labels,
 
 
 def load_data(input_shape, normalize=True,
-                           subtract_mean=True,
-                           balance_traits=True,
-                           trait_weights=None,
-                           balance_type=2,
-                           return_trait_weights=False,
-                           return_full_labels=False,
-                           label_type='linear',
-                           datapath=None):
-
+              subtract_mean=True,
+              balance_traits=True,
+              trait_weights=None,
+              balance_type=2,
+              return_trait_weights=False,
+              return_full_labels=False,
+              label_type='linear',
+              datapath=None):
     assert return_trait_weights + return_full_labels < 2, 'only can return one of trait_weights or full_labels'
 
     if datapath is None:
@@ -272,7 +266,7 @@ def load_data(input_shape, normalize=True,
                                                                                        balance_type=balance_type,
                                                                                        label_type=label_type,
                                                                                        trait_weights=trait_weights)
-    
+
     # chooses one of 3 variables to return as the meta variable - note, only one of the boolean return
     # variables should be set to True
     if return_full_labels:
@@ -281,7 +275,7 @@ def load_data(input_shape, normalize=True,
         meta = trait_weights
     else:
         meta = labels_relational
-    
+
     if keeper_idxs is not None:
         data = np.array([data[idx] for idx in keeper_idxs])
 
@@ -290,16 +284,16 @@ def load_data(input_shape, normalize=True,
                                                                           random_state=42)
 
     if K.image_data_format() == "channels_first":
-        train_data = train_data.reshape((train_data.shape[0], 
+        train_data = train_data.reshape((train_data.shape[0],
                                          input_shape[2], input_shape[1], input_shape[0]))
-        test_data = test_data.reshape((test_data.shape[0], 
+        test_data = test_data.reshape((test_data.shape[0],
                                        input_shape[2], input_shape[1], input_shape[0]))
     else:
-        train_data = train_data.reshape((train_data.shape[0], 
+        train_data = train_data.reshape((train_data.shape[0],
                                          input_shape[0], input_shape[1], input_shape[2]))
-        test_data = test_data.reshape((test_data.shape[0], 
+        test_data = test_data.reshape((test_data.shape[0],
                                        input_shape[0], input_shape[1], input_shape[2]))
-    
+
     if normalize:
         train_data = train_data.astype("float32") / 255.0
         test_data = test_data.astype("float32") / 255.0
@@ -317,12 +311,12 @@ def load_data(input_shape, normalize=True,
         le = LabelBinarizer()
         train_labels = le.fit_transform(train_labels)
         test_labels = le.transform(test_labels)
-        target_names = [str(x) for x in le.classes_] 
+        target_names = [str(x) for x in le.classes_]
     else:
         target_names = []
     validation_data = (test_data, test_labels)
     train_data = (train_data, train_labels)
-    
+
     if meta is not None:
         return train_data, validation_data, target_names, meta
     else:
@@ -336,7 +330,7 @@ def configure_gpu_options():
     set_session(sess)
 
 
-def get_command_line_args(run_type='analysis'):
+def get_command_line_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("-c", "--checkpoints", type=str, default="checkpoints")
     ap.add_argument("-g", "--gpu", type=int, default=0)

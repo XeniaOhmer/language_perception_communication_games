@@ -4,7 +4,8 @@ from utils.bootstrap_ci import bootstrap_mean
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
-def mixed_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_runs=10):
+def mixed_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_runs=10, subset=False,
+                flexible_role=False):
     """ generate the table of mean rewards withour symmeterizing the games: entries for 'bias1_bias2' will provide the
     value for a sender with bias1 playing with a receiver with bias2.
 
@@ -16,11 +17,15 @@ def mixed_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_run
     :param vs: vocabulary size
     :param ml: message length
     :param n_runs: number of runs per combination
+    :param subset: whether evaluated for the {default, scale, all} subset of the original 5 conditions
+    :param flexible_role: whether calculated for flexible role agents
     :return: matrix with mean rewards per combination
     """
 
     if '-' in combinations[0]:
         mapping = {'color-scale': 0, 'color-shape': 1, 'scale-shape': 2}
+    elif subset:
+        mapping = {'default': 0, 'scale': 1, 'all': 2}
     else:
         mapping = {'default': 0, 'color': 1, 'scale': 2, 'shape': 3, 'all': 4}
 
@@ -33,6 +38,9 @@ def mixed_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_run
                              + '_ml' + str(ml) + '/test_reward.npy')
             rewards_combination.append(reward[-1])
         rewards[combination] = np.mean(rewards_combination)
+        if flexible_role:
+            bias1, bias2 = combination.split('_')
+            rewards[bias2 + '_' + bias1] = np.mean(rewards_combination)
 
     table = np.zeros((len(mapping), len(mapping)))
     for key in rewards.keys():
@@ -45,21 +53,21 @@ def mixed_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_run
     return table
 
 
-def combined_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_runs=10):
+def combined_table(combinations, mode='language_emergence_basic', vs=4, ml=3, n_runs=10, subset=False):
     """ Here, a matrix with mean rewards is return that symmeterizes the game.
         Results for sender-bias1, receiver-bias2 and sender-bias2, receiver-bias1 are averaged.
 
     parameters: see mixed_table; number of runs here is given as for mixed table (do not double for symmeterization)
     :return: symmetric table with mean rewards
     """
-    table = mixed_table(combinations, mode=mode, vs=vs, ml=ml, n_runs=n_runs)
+    table = mixed_table(combinations, mode=mode, vs=vs, ml=ml, n_runs=n_runs, subset=subset)
 
     combined = (table + np.transpose(table)) / 2
     return combined
 
 
 def show_table(combinations, table, vmin=0.9, vmax=1.0, upper=False, xlabel='bias agent 1', ylabel='bias agent 2',
-               title='', cmap='viridis'):
+               title='', cmap='viridis', subset=False):
     """ function for plotting the reward matrices
 
     :param combinations:    list of all possible bias combinations
@@ -71,12 +79,16 @@ def show_table(combinations, table, vmin=0.9, vmax=1.0, upper=False, xlabel='bia
     :param ylabel: ylabel
     :param title: title
     :param cmap: color map
+    :param subset: whether only a subset of the conditions (default, scale, all) is evaluated
     :return: None (plot table
     """
 
     if '-' in combinations[0]:
         mapping = {'color-scale': 0, 'color-shape': 1, 'scale-shape': 2}
         labels = [k.split('-')[0] + '-\n' + k.split('-')[1] for k in mapping.keys()]
+    elif subset:
+        mapping = {'default': 0, 'scale': 1, 'all': 2}
+        labels = mapping.keys()
     else:
         mapping = {'default': 0, 'color': 1, 'scale': 2, 'shape': 3, 'all': 4}
         labels = mapping.keys()
@@ -105,7 +117,8 @@ def show_table(combinations, table, vmin=0.9, vmax=1.0, upper=False, xlabel='bia
     cbar.ax.set_yticklabels([vmin, 1.0], fontsize=14)
 
 
-def bootstrapped_cis(combinations, mode='language_emergence_basic', vs=4, ml=3, n_runs=10):
+def bootstrapped_cis(combinations, mode='language_emergence_basic', vs=4, ml=3, n_runs=10, subset=False,
+                     flexible_role=False):
     """calculate bootstrapped confidence intervals for symmeterized matrices.
 
     :param combinations: list of all possible bias combinations
@@ -113,11 +126,16 @@ def bootstrapped_cis(combinations, mode='language_emergence_basic', vs=4, ml=3, 
     :param vs: vocabulary size
     :param ml: message length
     :param n_runs: number of runs per combination (non-symmetric)
+    :param subset: whether evaluated for the {default, scale, all} subset of the original 5 conditions
+    :param flexible_role: whether calculated for flexible role agents
     :return: confidence intervals (absolute), means, confidence intervals (relative to mean)
     """
     if '-' in combinations[0]:
         mapping = {'color-scale': 0, 'color-shape': 1, 'scale-shape': 2}
         reverse_mapping = {0: 'color-scale', 1: 'color-shape', 2: 'scale-shape'}
+    elif subset:
+        mapping = {'default': 0, 'scale': 1, 'all': 2}
+        reverse_mapping = {0: 'default', 1: 'scale', 2: 'all'}
     else:
         mapping = {'default': 0, 'color': 1, 'scale': 2, 'shape': 3, 'all': 4}
         reverse_mapping = {0: 'default', 1: 'color', 2: 'scale', 3: 'shape', 4: 'all'}
@@ -140,6 +158,8 @@ def bootstrapped_cis(combinations, mode='language_emergence_basic', vs=4, ml=3, 
             rewards_combination.append(reward[-1])
 
         rewards[mapping[net1], mapping[net2], :] = rewards_combination
+        if flexible_role:
+            rewards[mapping[net2], mapping[net1], :] = rewards_combination
 
     folded = {}
     for i in range(len(mapping)):
